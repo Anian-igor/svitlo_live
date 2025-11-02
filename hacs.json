@@ -2,6 +2,6 @@
   "name": "Svitlo UA Power Outages",
   "domains": ["svitlo_ua"],
   "country": ["UA"],
-  "homeassistant": "2023.5.0",
+  "homeassistant": "2021.11.0",
   "render_readme": true
 }
