@@ -1,89 +1,68 @@
-"""Calendar entity for Svitlo UA integration (planned outages schedule)."""
-from datetime import datetime, timedelta
+"""Модуль календаря інтеграції «Світло»."""
+from datetime import datetime
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.util import dt as dt_util
-
-from .const import DOMAIN
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from . import const
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up calendar entity for outage schedule."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[const.DOMAIN][entry.entry_id]
     async_add_entities([OutagesCalendar(coordinator)])
 
-class OutagesCalendar(CalendarEntity):
-    """Calendar entity representing today's and tomorrow's outage events."""
-    _attr_has_entity_name = True
-
+class OutagesCalendar(CoordinatorEntity, CalendarEntity):
+    """Календар з запланованими відключеннями."""
     def __init__(self, coordinator):
-        self.coordinator = coordinator
-        self._attr_name = "Outages Schedule"
-        self._attr_unique_id = f"{coordinator.region}_{coordinator.group}_outages_calendar"
-        # Інформація про пристрій (та сама група пристроїв)
+        super().__init__(coordinator)
+        region = coordinator.region
+        group = coordinator.group
+        self._attr_name = f"Відключення - {region} {group}"
+        self._attr_unique_id = f"{region}_{group}_outages_calendar"
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{coordinator.region}_{coordinator.group}")},
-            "name": f"Svitlo UA Power Outages ({coordinator.region})",
-            "manufacturer": "Svitlo UA",
-            "model": f"Outage Schedule {coordinator.region}"
+            "identifiers": {(const.DOMAIN, f"{region}-{group}")},
+            "name": f"Світло - {region} черга {group}",
+            "manufacturer": "Світло UA",
+            "model": "Outage Schedule"
         }
 
     @property
-    def event(self) -> CalendarEvent:
-        """Поточна або найближча подія (відключення)."""
-        events = self._get_all_events()
-        now = dt_util.now()
-        # Знайти подію, яка зараз активна або наступна
+    def event(self):
+        # Наступний або активний івент
+        events = self.coordinator.data.get("events", [])
+        now = datetime.utcnow()
         next_event = None
+        current_event = None
         for ev in events:
-            if ev.start <= now < ev.end:
-                # Якщо зараз триває відключення – це поточна подія
+            start = ev.get("start")
+            end = ev.get("end")
+            if start and end and start <= now < end:
+                current_event = ev
+                break
+            if start and start >= now:
                 next_event = ev
                 break
-            if ev.start >= now:
-                next_event = ev
-                break
-        return next_event
+        ev = current_event or next_event
+        if ev:
+            summary = "Відключення електрики"
+            ev_type = ev.get("type", "")
+            if "POSSIBLE" in ev_type:
+                summary = "Можливе " + summary
+            return CalendarEvent(
+                start=ev.get("start"), end=ev.get("end"), summary=summary
+            )
+        return None
 
-    async def async_get_events(self, hass, start_date: datetime, end_date: datetime):
-        """Повернути усі події в заданому інтервалі (для перегляду календаря)."""
-        events = self._get_all_events()
-        result = []
-        for event in events:
-            if event.end <= start_date or event.start >= end_date:
-                continue  # подія поза запитуваним інтервалом
-            result.append(event)
-        return result
-
-    def _get_all_events(self):
-        """Отримати список CalendarEvent для усіх запланованих відключень (сьогодні і завтра)."""
+    async def async_get_events(self, hass, start_date, end_date):
         events = []
-        data = self.coordinator.data
-        if not data:
-            return events
-        # Об'єднати сьогоднішні і завтрашні події
-        for day_key in ("events_today", "events_tomorrow"):
-            for interval in data.get(day_key, []):
-                if interval is None:
-                    continue
-                start_dt, end_dt = interval
-                # Формуємо об'єкт CalendarEvent
-                event = CalendarEvent(
-                    start=start_dt,
-                    end=end_dt,
-                    summary="Planned outage",       # Короткий опис події
-                    description="Scheduled power outage"  # Можна додати довший опис
-                )
-                events.append(event)
-        # Сортуємо події за часом початку
-        events.sort(key=lambda ev: ev.start)
+        all_events = self.coordinator.data.get("events", [])
+        for ev in all_events:
+            start = ev.get("start")
+            end = ev.get("end")
+            if not start or not end:
+                continue
+            # Фільтр за запитом періоду
+            if start < end_date and end > start_date:
+                summary = "Відключення електрики"
+                ev_type = ev.get("type", "")
+                if "POSSIBLE" in ev_type:
+                    summary = "Можливе " + summary
+                events.append(CalendarEvent(start=ev["start"], end=ev["end"], summary=summary))
         return events
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success and self.coordinator.data is not None
-
-    async def async_added_to_hass(self):
-        # Підписуємось на оновлення координатора, щоб календар оновлювався автоматично
-        self.coordinator.async_add_listener(self.async_write_ha_state)
-
-    async def async_will_remove_from_hass(self):
-        self.coordinator.async_remove_listener(self.async_write_ha_state)
