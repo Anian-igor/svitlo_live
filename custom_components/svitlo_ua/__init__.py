@@ -1,37 +1,32 @@
-"""Це кастомна інтеграція 'Світло'."""
-import asyncio
-import logging
-from homeassistant.config_entries import ConfigEntry
+from __future__ import annotations
+import aiohttp
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from .const import DOMAIN
+from .coordinator import SvitloCoordinator
 
-from .coordinator import SvitloDataUpdateCoordinator
-from . import const
 
-_LOGGER = logging.getLogger(__name__)
+PLATFORMS = ["sensor"]
 
-# Глобальний словник для збереження даних координатора
-DOMAIN = const.DOMAIN
-
-async def async_setup(hass: HomeAssistant, config: dict):
-    """Не використовується, оскільки використовується config_flow."""
-    return True
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Налаштування та запуск інтеграції з config_entry."""
-    hass.data.setdefault(DOMAIN, {})
-    # Створюємо координатор даних
-    coordinator = SvitloDataUpdateCoordinator(hass, entry.data["region"], entry.data.get("provider"), entry.data["group"])
-    await coordinator.async_config_entry_first_refresh()
-    hass.data[DOMAIN][entry.entry_id] = coordinator
-    # Додаємо платформи sensor, binary_sensor, calendar
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "binary_sensor", "calendar"])
-    return True
+session: aiohttp.ClientSession = async_get_clientsession(hass)
+cfg = {
+"city": entry.data.get("city"),
+"street": entry.data.get("street"),
+"house": entry.data.get("house"),
+"scan_interval_minutes": entry.data.get("scan_interval", 180),
+}
+coord = SvitloCoordinator(hass, session, cfg)
+await coord.async_config_entry_first_refresh()
+hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"coordinator": coord}
+await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+return True
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Виключення інтеграції повністю."""
-    # Зупинка оновлень координатора
-    coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
-    if coordinator:
-        await coordinator.async_stop()
-    # Виключити завантажені платформи
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "binary_sensor", "calendar"])
+unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+if unload_ok:
+hass.data[DOMAIN].pop(entry.entry_id, None)
+return unload_ok
