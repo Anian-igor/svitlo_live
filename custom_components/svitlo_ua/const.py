@@ -5,6 +5,7 @@ DOMAIN = "svitlo_ua"
 REGION_API_MAPPING = {
     # Регіони Yasno:
     "Київ": {"api": "yasno", "region_code": "kiev"},
+    "Київська область": {"api": "yasno", "region_code": "kievobl"},
     "Дніпропетровська обл.": {"api": "yasno", "region_code": "dnipro"},
     # Інші регіони Energy UA:
     "Львівська обл.": {"api": "energy_ua", "region_code": "lviv"},
