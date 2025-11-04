@@ -29,6 +29,11 @@ class SvitloBaseEntity(CoordinatorEntity):
         super().__init__(coordinator)
 
     @property
+    def available(self) -> bool:
+        # Якщо останнє оновлення з сайту неуспішне — ентіті недоступне (ніяких старих значень)
+        return bool(self.coordinator.last_update_success)
+
+    @property
     def device_info(self) -> dict[str, Any]:
         region = getattr(self.coordinator, "region", "region")
         queue = getattr(self.coordinator, "queue", "queue")
@@ -52,25 +57,10 @@ class SvitloStatusSensor(SvitloBaseEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        if not self.available:
+            return None  # Unknown
         val = self.coordinator.data.get("now_status")  # "on"/"off"
         return "Grid ON" if val == "on" else "Grid OFF"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        d = self.coordinator.data
-        return {
-            "queue": d.get("queue"),
-            "date": d.get("date"),
-            "now_halfhour_index": d.get("now_halfhour_index"),
-            "next_change_at": d.get("next_change_at"),
-            "today_24h_classes": d.get("today_24h_classes"),
-            "today_48half": d.get("today_48half"),
-            "tomorrow_date": d.get("tomorrow_date"),
-            "tomorrow_24h_classes": d.get("tomorrow_24h_classes"),
-            "tomorrow_48half": d.get("tomorrow_48half"),
-            "updated": d.get("updated"),
-            "source": d.get("source"),
-        }
 
 
 class SvitloNextGridConnectionSensor(SvitloBaseEntity, SensorEntity):
@@ -85,6 +75,8 @@ class SvitloNextGridConnectionSensor(SvitloBaseEntity, SensorEntity):
 
     @property
     def native_value(self):
+        if not self.available:
+            return None
         if self.coordinator.data.get("now_status") == "on":
             return None
         iso_val = self.coordinator.data.get("next_on_at")
@@ -103,6 +95,8 @@ class SvitloNextOutageSensor(SvitloBaseEntity, SensorEntity):
 
     @property
     def native_value(self):
+        if not self.available:
+            return None
         if self.coordinator.data.get("now_status") == "off":
             return None
         iso_val = self.coordinator.data.get("next_off_at")
@@ -121,5 +115,7 @@ class SvitloScheduleUpdatedSensor(SvitloBaseEntity, SensorEntity):
 
     @property
     def native_value(self):
+        if not self.available:
+            return None
         iso_val = self.coordinator.data.get("updated")
         return dt_util.parse_datetime(iso_val) if iso_val else None
