@@ -144,9 +144,10 @@ class SvitloCalendar(CoordinatorEntity, CalendarEntity):
         start_utc = dt_util.as_utc(start_local)
         end_utc = dt_util.as_utc(end_local)
 
+       
         return CalendarEvent(
-            summary="⚡ Power outage",
+            summary="❌ Power outage ❌",
             start=start_utc,
             end=end_utc,
-            description=f"No electricity {start_local.strftime('%H:%M')}–{end_local.strftime('%H:%M')} (Kyiv)",
+            description=f"No electricity {start_local.strftime('%H:%M')}–{end_local.strftime('%H:%M')}",
         )
