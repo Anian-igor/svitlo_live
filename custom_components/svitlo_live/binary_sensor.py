@@ -35,8 +35,16 @@ class SvitloBaseEntity(CoordinatorEntity):
             "name": f"Svitlo • {region} / {queue}",
         }
 
+    @property
+    def available(self) -> bool:
+        # Ми хочемо показувати "unknown", а не "unavailable",
+        # тому ентіті завжди доступна, а відсутність даних обробляємо у is_on (повертаємо None).
+        return True
+
 
 class SvitloElectricityStatusBinary(SvitloBaseEntity, BinarySensorEntity):
+    """Бінарний сенсор: On = світло є / графіків немає; Off = відключення; Unknown = немає даних."""
+
     _attr_name = "Electricity status"
     _attr_device_class = BinarySensorDeviceClass.POWER
 
@@ -46,18 +54,28 @@ class SvitloElectricityStatusBinary(SvitloBaseEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        # on -> True, off -> False, unknown -> None
-        val = getattr(self.coordinator, "data", {}).get("now_status")
-        if val == "on":
-            return True
+        data = getattr(self.coordinator, "data", None)
+
+        # Якщо даних немає або останнє оновлення неуспішне — Unknown
+        if not data or not getattr(self.coordinator, "last_update_success", False):
+            return None
+
+        val = data.get("now_status")
+        # Логіка:
+        # - 'off'  -> False (відключення)
+        # - 'on' або 'nosched' (немає графіка) -> True
+        # - інше/відсутнє -> Unknown
         if val == "off":
             return False
+        if val in ("on", "nosched"):
+            return True
         return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        d = getattr(self.coordinator, "data", {})
+        d = getattr(self.coordinator, "data", {}) or {}
         return {
             "next_change_at": d.get("next_change_at"),
             "queue": d.get("queue"),
+            "status_raw": d.get("now_status"),
         }
