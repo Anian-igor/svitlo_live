@@ -34,6 +34,12 @@ blueprint:
       selector:
         text:
 
+    location_name:
+      name: Локація
+      default: "Дім"
+      selector:
+        text:
+
     storage_helper:
       name: Helper для збереження
       description: "Виберіть Text helper для збереження стану цього календаря"
@@ -47,15 +53,8 @@ variables:
   cal_entity: !input schedule_calendar
   mobile_targets: !input mobile_targets
   title_text: !input title_text
+  location_name: !input location_name
   storage_helper: !input storage_helper
-
-  region_queue: >-
-    {% set parts = cal_entity.split('_') %}
-    {% if parts | length >= 4 %}
-      {{ parts[1] | replace('-', ' ') | title }} {{ parts[2] | replace('-', ' ') | title }}, черга {{ parts[3:] | join('.') }}
-    {% else %}
-      {{ cal_entity.split('.')[1] | replace('_', ' ') | title }}
-    {% endif %}
 
 trigger:
   - platform: state
@@ -127,7 +126,7 @@ action:
             {{ ns.events }}
 
           body: >-
-            📍 {{ region_queue }}
+            📍 {{ location_name }}
 
             {% if events_today | length > 0 -%}
             📅 СЬОГОДНІ ({{ now().strftime('%d.%m.%Y') }})
