@@ -47,6 +47,26 @@ blueprint:
         entity:
           domain: input_text
 
+    text_output:
+      name: Text helper для тексту розкладу
+      description: "Сюди буде записуватись готовий текст розкладу (для Markdown/Telegram)"
+      selector:
+        entity:
+          domain: input_text
+
+    send_persistent_notification:
+      name: Створювати persistent_notification в HA
+      default: true
+      selector:
+        boolean:
+
+    send_on_first_run:
+      name: Надсилати сповіщення при першому запуску
+      description: "Якщо увімкнено – сповіщення прийде навіть при першому запуску, коли попереднього підпису ще немає."
+      default: true
+      selector:
+        boolean:
+
 mode: restart
 
 variables:
@@ -55,6 +75,9 @@ variables:
   title_text: !input title_text
   location_name: !input location_name
   storage_helper: !input storage_helper
+  text_output: !input text_output
+  send_persistent_notification: !input send_persistent_notification
+  send_on_first_run: !input send_on_first_run
 
 trigger:
   - platform: state
@@ -95,7 +118,13 @@ action:
         {{ ("c=" ~ (raw_events|count|string) ~ ";" ~ ns.sig) | trim }}
 
       old_signature: "{{ states(storage_helper) | default('') }}"
-      changed: "{{ schedule_signature [-255:] != old_signature and old_signature != '' }}"
+
+      changed: >-
+        {% if send_on_first_run %}
+          {{ schedule_signature[-255:] != old_signature }}
+        {% else %}
+          {{ schedule_signature[-255:] != old_signature and old_signature != '' }}
+        {% endif %}
 
   - if:
       - condition: template
@@ -149,6 +178,33 @@ action:
             {% endfor -%}
             {%- endif %}
 
+          body_text: |-
+            📍 {{ location_name }}
+
+            {% if events_today | length > 0 -%}
+            📅 СЬОГОДНІ ({{ now().strftime('%d.%m.%Y') }})
+            
+            {% for e in events_today -%}
+            {%- set s = as_datetime(e.start).astimezone(now().tzinfo) -%}
+            {%- set end = as_datetime(e.end).astimezone(now().tzinfo) -%}
+            ❌ {{ s.strftime('%H:%M') }} ━ {{ end.strftime('%H:%M') }}
+            
+            {% endfor -%}
+            {%- else -%}
+            📅 СЬОГОДНІ ({{ now().strftime('%d.%m.%Y') }}): ⚡ світло без відключень
+            {%- endif %}
+
+            {% if events_tomorrow | length > 0 -%}
+            📅 ЗАВТРА ({{ (now() + timedelta(days=1)).strftime('%d.%m.%Y') }})
+            
+            {% for e in events_tomorrow -%}
+            {%- set s2 = as_datetime(e.start).astimezone(now().tzinfo) -%}
+            {%- set e2 = as_datetime(e.end).astimezone(now().tzinfo) -%}
+            ❌ {{ s2.strftime('%H:%M') }} ━ {{ e2.strftime('%H:%M') }}
+            
+            {% endfor -%}
+            {%- endif %}
+
       - repeat:
           for_each: !input mobile_targets
           sequence:
@@ -162,6 +218,22 @@ action:
                   priority: high
                   tag: svitlo_changed
                   notification_icon: mdi:calendar-alert
+
+      - if:
+          - condition: template
+            value_template: "{{ send_persistent_notification }}"
+        then:
+          - service: persistent_notification.create
+            data:
+              title: "{{ title_text }}"
+              message: "{{ body }}"
+              notification_id: svitlo_changed
+
+      - service: input_text.set_value
+        target:
+          entity_id: !input text_output
+        data:
+          value: "{{ body_text }}"
 
   # 4) Зберігаємо підпис (обрізання до 255 на випадок довгих днів)
   - service: input_text.set_value
